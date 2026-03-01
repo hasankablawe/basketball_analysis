@@ -1,5 +1,6 @@
 # basketball_analysis
-=======
+
+
 # Basketball AI Analytics Pipeline
 
 This repository contains a modular, state-of-the-art computer vision pipeline for basketball video analysis. It detects and tracks players in real-time, projects their positions onto a 2D court representation, classifies teams based on jersey colors, and detects shot events (made or missed).
