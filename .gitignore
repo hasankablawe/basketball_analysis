@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Video outputs & Source content
+*.mp4
+*.avi
+*.mov
+source/
+temp/
+tmp/
+
+# Deep Learning weights and engines
+*.pt
+*.engine
+*.pth
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS Data
+.DS_Store
+Thumbs.db
