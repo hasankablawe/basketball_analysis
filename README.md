@@ -1,6 +1,7 @@
-# Real-Time Modular Basketball AI Analytics Pipeline
+# Basketball AI Analytics Pipeline
 
-An optimized, multi-model computer vision system engineered for live basketball video analytics. The pipeline integrates **RT-DETR** for anchor-free object detection, **Meta’s SAM 2** for temporal mask propagation, and a custom **YOLO Pose** architecture for 3D-to-2D spatial coordinate mapping via homography.
+This repository contains a modular, state-of-the-art computer vision pipeline for basketball video analysis. It detects and tracks players in real-time, projects their positions onto a 2D court representation, classifies teams based on jersey colors, and detects shot events (made or missed).
+
 
                           [ Raw Video Stream ]
                                    │
@@ -25,74 +26,53 @@ An optimized, multi-model computer vision system engineered for live basketball 
 
 ---
 
-## ⚡ Performance & Hardware Benchmarks
+## Features
 
-The pipeline is benchmarked across common deployment environments using an input stream profile of **1080p @ 30 FPS**. Latency metrics represent end-to-end execution per frame (Inference + Association + Transformation).
+- **Robust Object Detection**: Uses RT-DETR for fast and accurate player, action (jump shot/layup), and basketball detection.
+- **Pixel-Perfect Tracking**: Integrates Meta's Segment Anything Model 2 (SAM 2). Objects are detected once and their pixel masks are propagated temporally via SAM 2 for highly robust tracking.
+- **2D Court Mapping (Homography)**: Employs a custom YOLO pose model to detect 33 court keypoints, computing a homography matrix to project 3D camera coordinates onto a top-down 2D minimap.
+- **True-Color Team Classification**: Extracts the exact SAM 2 silhouette of a player, eliminating background noise, and uses K-Means clustering in HSV color space to reliably assign players to their respective teams.
+- **Shot Event State Machine**: A robust frame-to-frame state machine (`ShotStateMachine`) tracks the lifecycle of a shot (from jump to "ball in basket") to correctly identify points scored and update the scoreboard.
+- **Smart Trail Smoothing**: Applies mathematical smoothing and jump suppression to remove tracking jitter, producing clean visualization paths on the minimap.
 
-| Hardware Target | Runtime Engine | Precision | Core Detection (ms) | SAM 2 Propagation (ms) | Homography + Analytics (ms) | Total Throughput (FPS) |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **NVIDIA RTX 4090** | PyTorch / Native | FP16 | 12.4 ms | 18.2 ms | 2.1 ms | **~30.5 FPS** |
-| **NVIDIA RTX 4090** | TensorRT 10.x | FP16 | 4.1 ms | 7.3 ms | 1.1 ms | **~80.0 FPS** |
-| **Jetson Orin NX (20W)** | TensorRT 10.x | INT8 / FP16 | 14.5 ms | 28.1 ms | 4.8 ms | **~21.1 FPS** |
+## Architecture & Code Structure
 
----
+The project has been refactored from a monolithic notebook script into a clean, maintainable software architecture:
 
-## 🛠️ Deep Component Architecture
+- `main.py`: The central orchestrator containing the video processing loop, logic sync, and state machines.
+- `constants.py`: The single source of truth for all "magic numbers"—model paths, confidence thresholds, API config, court dimensions, and team colors (editable here).
+- `detection.py`: RT-DETR object detection and bounding-box assignment.
+- `segmentation.py`: SAM 2 mask generation and real-time temporal propagation.
+- `homography.py`: YOLO keypoint detection, homography matrix computation, and perspective transformation math.
+- `analytics.py`: Team classification clustering mathematically.
+- `court.py` & `visualization.py`: 2D minimap drawing, trail rendering, and on-screen overlays.
 
-### 1. Detection-Guided Instance Segmentation
-* **Detector:** `RT-DETR-L` is utilized to bypass Non-Maximum Suppression (NMS) latency bottlenecks inherent to traditional CNN anchors, providing deterministic processing windows for ball and player bounding boxes.
-* **Tracker:** Temporal tracking leverages **SAM 2 (Hiera-Tiny)** inside a track-then-detect paradigm. Bounding boxes initialize the streaming memory bank on frame $t_0$; masks are subsequently propagated via memory attention shortcuts across sequential frames, neutralizing identity-switching errors during tight defensive cross-overs.
+## Requirements
 
-### 2. Perspective Homography & Trail Smoothing
-* **Keypoint Extraction:** A specialized top-down `YOLOv8x-Pose` model isolates up to 33 structural court intersections.
-* **Coordinate Mapping:** Transforms pixel coordinates $(x, y)$ into metric court coordinates $(X, Y)$ using a singular homography matrix $H$:
-$$\begin{bmatrix} X \\ Y \\ 1 \end{bmatrix} \sim H \begin{bmatrix} x \\ y \\ 1 \end{bmatrix}$$
-* **Suppression:** Spatial trajectories are fed through an alpha-beta filter with dynamic jump-suppression windows to isolate camera panning artifacts from true player vectors.
+Ensure you have a modern GPU with CUDA. Key dependencies (see `requirements.txt` for full list) include:
 
-### 3. Background-Isolated Team Clustering
-* **Segmentation Extraction:** The pipeline uses bitwise masks generated by SAM 2 to zero-out court floor pixels, isolating player jersey textiles.
-* **Vector Quantification:** The target pixels are projected into the **HSV color space** to protect against lighting gradients. Two-center K-Means clustering aggregates the hue/saturation indices, outputting stable team classifications within 3 frames of initial tracking entry.
+- `torch` & `torchvision`
+- `ultralytics`
+- `supervision`
+- `opencv-python`
+- Meta's Segment Anything 2 (SAM 2) real-time fork
 
-### 4. Deterministic Game-State Logic
-* **State Machine:** A non-blocking, asynchronous finite state machine (`ShotStateMachine`) monitors spatial overlapping intersection conditions between the ball trajectory vector and the rim bounding sphere. 
-* **State Invariants:** Regulates transition triggers across defined phases: `[ Possession -> Release -> Peak Ascent -> Vector Inversion -> Cylinder Entry -> Score/Miss Confirmation ]`.
+## Usage
 
----
+Run the analysis by passing a source video to the main script. Output files are saved locally.
 
-## 📦 Deployment & Environmental Strictness
+```bash
+# Process a video and save the dual output
+python main.py NBA.mp4 --save
 
-### Prerequisites
-* **Host Environment:** Ubuntu 22.04 LTS / 24.04 LTS
-* **Compute Layer:** CUDA 12.2+ / cuDNN 8.9+
-* **Hardware Engine:** TensorRT 10.0+ (Optional for accelerated paths)
+# Start processing at 10 seconds and run for 30 seconds
+python main.py NBA.mp4 --start 10 --duration 30 --save
 
-### Environment Blueprint
+# If team colors appear mapped backwards on the minimap, flip them:
+python main.py NBA.mp4 --save --swap-teams
+```
 
-    # Clone and isolate environment
-    git clone https://github.com/hasankablawe/basketball_analysis.git
-    cd basketball_analysis
-    python3 -m venv venv
-    source venv/bin/activate
-
-    # Install explicit, version-pinned dependencies
-    pip install --upgrade pip
-    pip install -r requirements.txt
-
----
-
-## 🚀 Execution & Command Interface
-
-Execute processing loops via CLI arguments. Output pipelines utilize multithreaded file-writers to prevent encoding I/O blocking during live inference loops.
-
-    # Production Execution: standard evaluation with dual display generation
-    python main.py --source data/nba_clip.mp4 --save
-
-    # Frame-Bounded Run: starts processing at offset 10s for a 30s evaluation window
-    python main.py --source data/nba_clip.mp4 --start 10 --duration 30 --save
-
-    # Runtime Overrides: manually invert team indexing arrays if clusters swap positions
-    python main.py --source data/nba_clip.mp4 --swap-teams --save
-
-### Generated Products
-1. `output_tracking.mp4`: Broadcast visualization output embedded with high-fidelity SAM 2 transparent instance segmentations.
-2. `output_map.mp4`: A synchronous top-down 2D schematic of the play space, rendering smoothed trail paths and real-time scoreboard modifications.
+The script generates two high-definition MP4 files simultaneously:
+1. `output_tracking.mp4`: The broadcast video rendered with SAM 2 silhouette overlays.
+2. `output_map.mp4`: A mathematically smoothed 2D animated top-down view showing player trails and an automated scoreboard.
+>>>>>>> c071802 (Initial commit for Basketball Analysis project)
