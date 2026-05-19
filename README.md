@@ -75,4 +75,3 @@ python main.py NBA.mp4 --save --swap-teams
 The script generates two high-definition MP4 files simultaneously:
 1. `output_tracking.mp4`: The broadcast video rendered with SAM 2 silhouette overlays.
 2. `output_map.mp4`: A mathematically smoothed 2D animated top-down view showing player trails and an automated scoreboard.
->>>>>>> c071802 (Initial commit for Basketball Analysis project)
